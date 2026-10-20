@@ -125,7 +125,11 @@ class HSMService:
             try:
                 session = self.pkcs11.openSession(slot, flags)
                 if login:
-                    session.login(self.pin)
+                    try:
+                        session.login(self.pin, PyKCS11.CKU_USER)
+                    except PyKCS11.PyKCS11Error as pe:
+                        if pe.value != PyKCS11.LowLevel.CKR_USER_ALREADY_LOGGED_IN:
+                            raise
                 yield session
             except PyKCS11.PyKCS11Error as pe:
                 logger.error("Lỗi PyKCS11 trong session: %s", str(pe))
@@ -354,8 +358,9 @@ class HSMService:
                     (PyKCS11.CKA_EXTRACTABLE, False),
                 ]
 
+                rsa_mecha = PyKCS11.Mechanism(PyKCS11.CKM_RSA_PKCS_KEY_PAIR_GEN, None)
                 pub_key, _ = session.generateKeyPair(
-                    pub_template, priv_template, PyKCS11.CKM_RSA_PKCS_KEY_PAIR_GEN
+                    pub_template, priv_template, mecha=rsa_mecha
                 )
                 pem_str = self._rsa_pub_to_pem(session, pub_key)
                 return "RSA", pem_str
@@ -387,8 +392,9 @@ class HSMService:
                     (PyKCS11.CKA_EXTRACTABLE, False),
                 ]
 
+                ec_mecha = PyKCS11.Mechanism(PyKCS11.CKM_EC_KEY_PAIR_GEN, None)
                 pub_key, _ = session.generateKeyPair(
-                    pub_template, priv_template, PyKCS11.CKM_EC_KEY_PAIR_GEN
+                    pub_template, priv_template, mecha=ec_mecha
                 )
                 pem_str = self._ec_pub_to_pem(session, pub_key, curve_lower)
                 return "ECDSA", pem_str
@@ -424,11 +430,22 @@ class HSMService:
         attrs = session.getAttributeValue(
             pub_obj, [PyKCS11.CKA_MODULUS, PyKCS11.CKA_PUBLIC_EXPONENT]
         )
-        modulus_bytes = bytes(attrs[0])
-        exponent_bytes = bytes(attrs[1])
+        mod_raw = attrs[0]
+        exp_raw = attrs[1]
 
-        n = int.from_bytes(modulus_bytes, byteorder="big")
-        e = int.from_bytes(exponent_bytes, byteorder="big")
+        if isinstance(mod_raw, int):
+            n = mod_raw
+        elif isinstance(mod_raw, (bytes, bytearray)):
+            n = int.from_bytes(mod_raw, byteorder="big")
+        else:
+            n = int.from_bytes(bytes(mod_raw), byteorder="big")
+
+        if isinstance(exp_raw, int):
+            e = exp_raw
+        elif isinstance(exp_raw, (bytes, bytearray)):
+            e = int.from_bytes(exp_raw, byteorder="big")
+        else:
+            e = int.from_bytes(bytes(exp_raw), byteorder="big")
 
         public_numbers = rsa.RSAPublicNumbers(e, n)
         pub_key = public_numbers.public_key()

@@ -98,6 +98,15 @@ async def handle_hsm_error(request, exc: HSMServiceException):
     )
 
 
+@app.exception_handler(Exception)
+async def handle_unexpected_exception(request, exc: Exception):
+    logger.error("Lỗi không mong muốn: %s", str(exc), exc_info=True)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"error": type(exc).__name__, "message": str(exc)},
+    )
+
+
 # ---------------------------------------------------------------------------
 # 1. System Healthcheck (Public - Dùng cho Monitor / Cloud PaaS Ping)
 # ---------------------------------------------------------------------------
