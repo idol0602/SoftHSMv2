@@ -156,13 +156,21 @@ class HSMService:
             if slot is not None:
                 try:
                     token_info = self.pkcs11.getTokenInfo(slot)
+
+                    def _fmt_ver(v):
+                        if hasattr(v, "major") and hasattr(v, "minor"):
+                            return f"{v.major}.{v.minor}"
+                        elif isinstance(v, (tuple, list)) and len(v) >= 2:
+                            return f"{v[0]}.{v[1]}"
+                        return str(v)
+
                     details = {
                         "label": token_info.label.strip(),
                         "manufacturerID": token_info.manufacturerID.strip(),
                         "model": token_info.model.strip(),
                         "serialNumber": token_info.serialNumber.strip(),
-                        "hardwareVersion": f"{token_info.hardwareVersion.major}.{token_info.hardwareVersion.minor}",
-                        "firmwareVersion": f"{token_info.firmwareVersion.major}.{token_info.firmwareVersion.minor}",
+                        "hardwareVersion": _fmt_ver(token_info.hardwareVersion),
+                        "firmwareVersion": _fmt_ver(token_info.firmwareVersion),
                     }
                 except Exception as e:
                     status = "degraded"
