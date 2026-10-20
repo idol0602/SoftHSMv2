@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     PORT: int = 8080
     LOG_LEVEL: str = "INFO"
 
+    # Đường dẫn thư mục lưu trữ Token SoftHSM
+    HSM_TOKEN_DIR: str = "/var/lib/softhsm/tokens"
+
+    # Cấu hình Sao lưu tự động lên Supabase Storage (Bảo toàn dữ liệu trên Cloud PaaS / Render)
+    ENABLE_CLOUD_BACKUP: bool = True
+    SUPABASE_URL: Optional[str] = "https://legpvxckbitwatyeiiqb.supabase.co"
+    SUPABASE_KEY: Optional[str] = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlZ3B2eGNrYml0d2F0eWVpaXFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4OTk2NDEsImV4cCI6MjEwMzQ3NTY0MX0.yHqHznFPgWBSNcofxtD2SI9-19sUmZj4nX1AsvWFZ84"
+    SUPABASE_BUCKET: str = "pdf-files"
+    SUPABASE_BACKUP_PATH: str = "backups/softhsm_tokens.tar.gz"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

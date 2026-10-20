@@ -37,7 +37,11 @@ if [ ! -f /usr/lib/softhsm/libsofthsm2.so ]; then
     fi
 fi
 
-# 4. Kiểm tra xem Token với nhãn $TOKEN_LABEL đã được khởi tạo hay chưa
+# 4. Tự động kiểm tra và phục hồi Token từ Cloud Storage (Supabase) nếu có
+echo "☁️  Kiểm tra và phục hồi Token từ Cloud Storage (Supabase)..."
+python -m app.backup restore || true
+
+# 5. Kiểm tra xem Token với nhãn $TOKEN_LABEL đã được khởi tạo hay chưa
 echo "🔍 Kiểm tra trạng thái Slot và Token..."
 if softhsm2-util --show-slots | grep -q "Label: *$TOKEN_LABEL"; then
     echo "✅ Token '$TOKEN_LABEL' đã tồn tại và sẵn sàng hoạt động."
@@ -45,6 +49,9 @@ else
     echo "📦 Token '$TOKEN_LABEL' chưa tồn tại. Đang tiến hành khởi tạo token mới..."
     softhsm2-util --init-token --free --label "$TOKEN_LABEL" --so-pin "$SO_PIN" --pin "$USER_PIN"
     echo "✅ Đã khởi tạo thành công token '$TOKEN_LABEL' với User PIN và SO PIN cấu hình."
+    
+    echo "☁️  Tạo bản sao lưu khởi tạo lên Cloud Storage (Supabase)..."
+    python -m app.backup backup || true
 fi
 
 # Hiển thị thông tin slot hiện tại

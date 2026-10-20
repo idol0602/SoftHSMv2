@@ -16,3 +16,13 @@ services:
         value: "12345678"
       - key: LOG_LEVEL
         value: INFO
+      - key: ENABLE_CLOUD_BACKUP
+        value: "true"
+      - key: SUPABASE_URL
+        value: "https://legpvxckbitwatyeiiqb.supabase.co"
+      - key: SUPABASE_KEY
+        value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlZ3B2eGNrYml0d2F0eWVpaXFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4OTk2NDEsImV4cCI6MjEwMzQ3NTY0MX0.yHqHznFPgWBSNcofxtD2SI9-19sUmZj4nX1AsvWFZ84"
+      - key: SUPABASE_BUCKET
+        value: "pdf-files"
+      - key: SUPABASE_BACKUP_PATH
+        value: "backups/softhsm_tokens.tar.gz"

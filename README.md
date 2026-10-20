@@ -116,6 +116,11 @@ Microservice này hoạt động như một **Trung tâm Quản lý Mật mã & 
 | `PORT` | `8080` | Cổng HTTP lắng nghe (Render/Koyeb tự động inject) |
 | `HOST` | `0.0.0.0` | Địa chỉ mạng lắng nghe |
 | `LOG_LEVEL` | `INFO` | Mức log: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `ENABLE_CLOUD_BACKUP` | `true` | Bật/tắt tính năng tự động sao lưu và phục hồi Token lên Cloud Storage |
+| `SUPABASE_URL` | *(URL dự án)* | Địa chỉ endpoint Supabase Storage (ví dụ: `https://<project-ref>.supabase.co`) |
+| `SUPABASE_KEY` | *(Anon/Service Key)* | Khóa xác thực truy cập Supabase Storage |
+| `SUPABASE_BUCKET` | `pdf-files` | Tên Bucket lưu trữ bản sao lưu Token |
+| `SUPABASE_BACKUP_PATH` | `backups/softhsm_tokens.tar.gz` | Đường dẫn file nén sao lưu trên Cloud Storage |
 
 ---
 
@@ -264,7 +269,7 @@ curl -X POST "$API_URL/api/v1/hsm/decrypt" \
 
 ### 5.4. Ký số & Xác thực chữ ký số (Digital Signatures & Verification)
 
-#### Ký số hợp đồng / hóa đơn / chuỗi băm giao dịch (`POST /api/v1/hsm/sign`):
+#### A. Ký số trên toàn văn bản hoặc chuỗi văn bản UTF-8:
 ```bash
 curl -X POST "$API_URL/api/v1/hsm/sign" \
   -H "X-API-Key: $API_KEY" \
@@ -277,7 +282,21 @@ curl -X POST "$API_URL/api/v1/hsm/sign" \
   }'
 ```
 
-#### Xác thực chữ ký số bằng Public Key (`POST /api/v1/hsm/verify`):
+#### B. Ký số trên chuỗi mã băm SHA-256 Hex (64 ký tự) - Dùng cho Sổ cái / Blockchain / Giao dịch:
+```bash
+curl -X POST "$API_URL/api/v1/hsm/sign" \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key_label": "financial:master-ledger-ecdsa",
+    "data_hex": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+    "is_prehashed": true,
+    "mechanism": "AUTO"
+  }'
+```
+> **Mẹo**: Bạn cũng có thể truyền trực tiếp chuỗi Hex 64 ký tự vào trường `"data"` kèm `"is_prehashed": true`. Hệ thống sẽ tự động nhận diện và chuyển đổi sang 32 bytes băm chuẩn xác.
+
+#### C. Xác thực chữ ký số bằng Public Key (`POST /api/v1/hsm/verify`):
 ```bash
 curl -X POST "$API_URL/api/v1/hsm/verify" \
   -H "X-API-Key: $API_KEY" \
@@ -289,6 +308,24 @@ curl -X POST "$API_URL/api/v1/hsm/verify" \
     "is_prehashed": false,
     "mechanism": "AUTO"
   }'
+```
+
+---
+
+### 5.5. Sao lưu & Phục hồi Cloud Storage (Disaster Recovery)
+
+Dịch vụ tự động đồng bộ bản sao lưu Token lên Supabase Storage mỗi khi có sự kiện sinh/xóa khóa. Bạn cũng có thể kích hoạt thủ công:
+
+#### A. Kích hoạt sao lưu Token tức thời (`POST /api/v1/hsm/backup`):
+```bash
+curl -X POST "$API_URL/api/v1/hsm/backup" \
+  -H "X-API-Key: $API_KEY"
+```
+
+#### B. Kích hoạt phục hồi Token từ Cloud Storage (`POST /api/v1/hsm/restore`):
+```bash
+curl -X POST "$API_URL/api/v1/hsm/restore" \
+  -H "X-API-Key: $API_KEY"
 ```
 
 ---

@@ -407,7 +407,7 @@ class HSMService:
     # -----------------------------------------------------------------------
     def get_public_key_pem(self, key_label: str) -> Tuple[str, str]:
         """Đọc và xuất Public Key lưu trong Token ra định dạng chuẩn PEM X.509"""
-        with self.get_session(rw=False, login=True) as session:
+        with self.get_session(rw=False, login=False) as session:
             keys = self._find_key_objects(session, key_label, PyKCS11.CKO_PUBLIC_KEY)
             if not keys:
                 raise HSMKeyNotFoundException(f"Không tìm thấy Public Key với nhãn '{key_label}'.")
@@ -484,7 +484,7 @@ class HSMService:
         Niêm phong (mã hóa) dữ liệu giá thầu bằng Public Key.
         Hỗ trợ RSA PKCS#1 v1.5 hoặc RSA OAEP với SHA-256.
         """
-        with self.get_session(rw=False, login=True) as session:
+        with self.get_session(rw=False, login=False) as session:
             keys = self._find_key_objects(session, key_label, PyKCS11.CKO_PUBLIC_KEY)
             if not keys:
                 raise HSMKeyNotFoundException(f"Không tìm thấy Public Key '{key_label}' để mã hóa.")
@@ -605,7 +605,7 @@ class HSMService:
         Xác thực chữ ký số bằng Public Key trong HSM.
         Trả về True nếu chữ ký hợp lệ, False nếu không hợp lệ hoặc dữ liệu bị sửa đổi.
         """
-        with self.get_session(rw=False, login=True) as session:
+        with self.get_session(rw=False, login=False) as session:
             keys = self._find_key_objects(session, key_label, PyKCS11.CKO_PUBLIC_KEY)
             if not keys:
                 raise HSMKeyNotFoundException(f"Không tìm thấy Public Key '{key_label}' để xác thực.")

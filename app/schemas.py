@@ -160,9 +160,14 @@ class SignRequest(BaseModel):
         None,
         description="Dữ liệu nhị phân hoặc chuỗi băm (hash) cần ký dưới dạng Base64"
     )
+    data_hex: Optional[str] = Field(
+        None,
+        description="Chuỗi Hex mã băm SHA-256 (64 ký tự hex) hoặc dữ liệu nhị phân dạng hex",
+        examples=["4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a"]
+    )
     is_prehashed: bool = Field(
         default=False,
-        description="Đặt True nếu data_base64 truyền vào đã là giá trị băm SHA-256 (32 bytes)"
+        description="Đặt True nếu data_base64/data_hex/data truyền vào đã là giá trị băm SHA-256 (32 bytes)"
     )
     mechanism: SignMechanismEnum = Field(
         default=SignMechanismEnum.AUTO,
@@ -190,10 +195,14 @@ class VerifyRequest(BaseModel):
         None,
         description="Dữ liệu gốc hoặc chuỗi băm dạng Base64"
     )
+    data_hex: Optional[str] = Field(
+        None,
+        description="Dữ liệu gốc hoặc mã băm dạng Hex"
+    )
     signature_base64: str = Field(..., description="Chữ ký số cần kiểm tra dạng Base64")
     is_prehashed: bool = Field(
         default=False,
-        description="Đặt True nếu data_base64 truyền vào đã là giá trị băm SHA-256"
+        description="Đặt True nếu data_base64/data_hex truyền vào đã là giá trị băm SHA-256"
     )
     mechanism: SignMechanismEnum = Field(
         default=SignMechanismEnum.AUTO,
@@ -214,3 +223,11 @@ class PublicKeyResponse(BaseModel):
     key_label: str
     key_type: str
     public_key_pem: str = Field(..., description="Khóa công khai ở chuẩn PEM PKIX/X.509 SubjectPublicKeyInfo")
+
+
+# ---------------------------------------------------------------------------
+# 8. Cloud Backup & Restore Models
+# ---------------------------------------------------------------------------
+class BackupResponse(BaseModel):
+    success: bool
+    message: str

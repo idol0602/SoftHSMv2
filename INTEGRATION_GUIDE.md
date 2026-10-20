@@ -8,10 +8,11 @@ Tài liệu này hướng dẫn các kỹ sư Backend tích hợp hệ thống p
 ## 📑 Mục lục
 1. [Thông số kết nối & Xác thực](#1-thông-số-kết-nối--xác-thực)
 2. [Chiến lược định danh khóa (Key Namespace Convention)](#2-chiến-lược-định-danh-khóa-key-namespace-convention)
-3. [Client SDK Wrapper mẫu (Node.js, Python, Golang)](#3-client-sdk-wrapper-mẫu)
+3. [Client SDK Wrapper mẫu (Node.js, Python, Golang, C# .NET)](#3-client-sdk-wrapper-mẫu)
    - [3.1. Node.js / TypeScript (Native Fetch)](#31-nodejs--typescript-native-fetch)
    - [3.2. Python (Requests / Httpx)](#32-python-requests)
    - [3.3. Golang (net/http)](#33-golang-nethttp)
+   - [3.4. C# / .NET 8 (HttpClient & Strongly Typed SDK)](#34-c--net-8-httpclient--strongly-typed-sdk)
 4. [Các kịch bản nghiệp vụ thực tế (Integration Recipes)](#4-các-kịch-bản-nghiệp-vụ-thực-tế-integration-recipes)
    - [Kịch bản 1: Niêm phong và Mở niêm phong giá thầu / Dữ liệu bí mật](#kịch-bản-1-niêm-phong-và-mở-niêm-phong-giá-thầu--dữ-liệu-bí-mật)
    - [Kịch bản 2: Ký số Hợp đồng điện tử & Hóa đơn (e-Contract / e-Invoice)](#kịch-bản-2-ký-số-hợp-đồng-điện-tử--hóa-đơn-e-contract--e-invoice)
@@ -326,6 +327,122 @@ func (c *HSMClient) Sign(keyLabel, data string) (string, error) {
 	json.NewDecoder(resp.Body).Decode(&res)
 	return res.SignatureBase64, nil
 }
+```
+
+---
+
+### 3.4. C# / .NET 8 (HttpClient & Strongly Typed SDK)
+
+Lưu file thành `SoftHsmClient.cs` (Dùng cho ASP.NET Core Web API):
+
+```csharp
+using System.Net.Http.Json;
+using System.Text.Json.Serialization;
+
+namespace TrustSimBackend.Infrastructure.Services.Hsm;
+
+public class SoftHsmClient
+{
+    private readonly HttpClient _httpClient;
+    private readonly string _apiKey;
+
+    public SoftHsmClient(HttpClient httpClient, string baseUrl, string apiKey)
+    {
+        _httpClient = httpClient;
+        _httpClient.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
+        _apiKey = apiKey;
+    }
+
+    private HttpRequestMessage CreateRequest(HttpMethod method, string path, object? body = null)
+    {
+        var req = new HttpRequestMessage(method, path);
+        req.Headers.Add("X-API-Key", _apiKey);
+        if (body != null)
+        {
+            req.Content = JsonContent.Create(body);
+        }
+        return req;
+    }
+
+    /// <summary>Sinh cặp khóa ECDSA (secp256r1) hoặc RSA</summary>
+    public async Task<GenerateKeyResult> GenerateKeyPairAsync(
+        string keyLabel, 
+        string keyType = "ECDSA", 
+        int keySize = 2048, 
+        string curve = "secp256r1", 
+        CancellationToken ct = default)
+    {
+        var req = CreateRequest(HttpMethod.Post, "api/v1/hsm/generate-keypair", new {
+            key_label = keyLabel,
+            key_type = keyType,
+            key_size = keySize,
+            curve = curve
+        });
+        using var res = await _httpClient.SendAsync(req, ct);
+        res.EnsureSuccessStatusCode();
+        return (await res.Content.ReadFromJsonAsync<GenerateKeyResult>(cancellationToken: ct))!;
+    }
+
+    /// <summary>Ký số trên chuỗi băm Hex SHA-256 (64 ký tự hex) cho Sổ cái / Hợp đồng</summary>
+    public async Task<string> SignHashHexAsync(string keyLabel, string hashHex, CancellationToken ct = default)
+    {
+        var req = CreateRequest(HttpMethod.Post, "api/v1/hsm/sign", new {
+            key_label = keyLabel,
+            data_hex = hashHex,
+            is_prehashed = true,
+            mechanism = "AUTO"
+        });
+        using var res = await _httpClient.SendAsync(req, ct);
+        res.EnsureSuccessStatusCode();
+        var data = await res.Content.ReadFromJsonAsync<SignResult>(cancellationToken: ct);
+        return data!.SignatureBase64;
+    }
+
+    /// <summary>Xác thực chữ ký số từ xa qua SoftHSM</summary>
+    public async Task<bool> VerifySignatureAsync(
+        string keyLabel, 
+        string hashHex, 
+        string signatureBase64, 
+        CancellationToken ct = default)
+    {
+        var req = CreateRequest(HttpMethod.Post, "api/v1/hsm/verify", new {
+            key_label = keyLabel,
+            data_hex = hashHex,
+            signature_base64 = signatureBase64,
+            is_prehashed = true,
+            mechanism = "AUTO"
+        });
+        using var res = await _httpClient.SendAsync(req, ct);
+        res.EnsureSuccessStatusCode();
+        var data = await res.Content.ReadFromJsonAsync<VerifyResult>(cancellationToken: ct);
+        return data!.Valid;
+    }
+
+    /// <summary>Lấy Public Key chuẩn PEM (Hỗ trợ Cache-Control)</summary>
+    public async Task<string> GetPublicKeyPemAsync(string keyLabel, CancellationToken ct = default)
+    {
+        var req = CreateRequest(HttpMethod.Get, $"api/v1/hsm/public-key/{Uri.EscapeDataString(keyLabel)}");
+        using var res = await _httpClient.SendAsync(req, ct);
+        res.EnsureSuccessStatusCode();
+        var data = await res.Content.ReadFromJsonAsync<PublicKeyResult>(cancellationToken: ct);
+        return data!.PublicKeyPem;
+    }
+}
+
+public record GenerateKeyResult(
+    [property: JsonPropertyName("success")] bool Success,
+    [property: JsonPropertyName("key_label")] string KeyLabel,
+    [property: JsonPropertyName("public_key_pem")] string PublicKeyPem);
+
+public record SignResult(
+    [property: JsonPropertyName("success")] bool Success,
+    [property: JsonPropertyName("signature_base64")] string SignatureBase64);
+
+public record VerifyResult(
+    [property: JsonPropertyName("valid")] bool Valid);
+
+public record PublicKeyResult(
+    [property: JsonPropertyName("public_key_pem")] string PublicKeyPem);
 ```
 
 ---

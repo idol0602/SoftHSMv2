@@ -3,12 +3,13 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Annotated, Optional
 
-from fastapi import FastAPI, Depends, HTTPException, Query, status
+from fastapi import FastAPI, Depends, HTTPException, Query, status, BackgroundTasks, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.auth import verify_api_key
+from app.backup import backup_tokens_to_supabase, restore_tokens_from_supabase
 from app.hsm import (
     HSMService,
     HSMServiceException,
@@ -31,6 +32,7 @@ from app.schemas import (
     VerifyRequest,
     VerifyResponse,
     PublicKeyResponse,
+    BackupResponse,
 )
 
 logger = logging.getLogger("main")
@@ -138,12 +140,14 @@ async def health_check():
 )
 async def generate_keypair(
     payload: GenerateKeyPairRequest,
+    background_tasks: BackgroundTasks,
     _: Annotated[str, Depends(verify_api_key)],
 ):
     """
     Tạo một cặp khóa mới lưu vĩnh viễn trong Token SoftHSMv2.
     - Khóa riêng (Private Key) được bảo vệ trong HSM, cấm trích xuất.
     - Hỗ trợ phân vùng namespace cho nhiều dự án qua nhãn (vd: `crm:signing-key`, `auction:session-01`).
+    - Tự động kích hoạt Background Task đồng bộ bản sao lưu Token lên Cloud Storage (Supabase).
     """
     hsm = HSMService.get_instance()
     key_type, pub_pem = hsm.generate_keypair(
@@ -152,6 +156,9 @@ async def generate_keypair(
         key_size=payload.key_size,
         curve=payload.curve or "secp256r1",
     )
+    # Tự động đẩy bản sao lưu lên Supabase Storage trong nền
+    background_tasks.add_task(backup_tokens_to_supabase)
+
     return GenerateKeyPairResponse(
         success=True,
         message=f"Đã sinh thành công cặp khóa {key_type} với nhãn '{payload.key_label}'.",
@@ -211,14 +218,17 @@ async def get_key_details(
 )
 async def get_public_key(
     key_label: str,
+    response: Response,
     _: Annotated[str, Depends(verify_api_key)],
 ):
     """
     Xuất Public Key định dạng chuẩn PEM X.509 để chia sẻ cho các client/dự án
     dùng để mã hóa dữ liệu hoặc đối soát chữ ký số.
+    Bổ sung Cache-Control max-age=86400 để client cache tối ưu hiệu năng.
     """
     hsm = HSMService.get_instance()
     key_type, pub_pem = hsm.get_public_key_pem(key_label)
+    response.headers["Cache-Control"] = "public, max-age=86400"
     return PublicKeyResponse(
         key_label=key_label,
         key_type=key_type,
@@ -234,11 +244,15 @@ async def get_public_key(
 )
 async def delete_keypair(
     key_label: str,
+    background_tasks: BackgroundTasks,
     _: Annotated[str, Depends(verify_api_key)],
 ):
     """Hủy bỏ và giải phóng vĩnh viễn cặp khóa trong Token theo nhãn chỉ định."""
     hsm = HSMService.get_instance()
     deleted_count = hsm.delete_keypair(key_label)
+    # Tự động cập nhật lại bản sao lưu lên Cloud Storage
+    background_tasks.add_task(backup_tokens_to_supabase)
+
     return DeleteKeyResponse(
         success=True,
         key_label=key_label,
@@ -361,8 +375,14 @@ async def sign_data(
     - Hỗ trợ thuật toán RSA (PKCS#1 v1.5 + SHA-256) hoặc ECDSA.
     - Ứng dụng: Ký số Hóa đơn điện tử, Hợp đồng kinh tế, Xác thực Webhook, Token xác thực phiên.
     """
-    if payload.data is not None:
-        raw_data = payload.data.encode("utf-8")
+    if payload.data_hex is not None:
+        try:
+            raw_data = bytes.fromhex(payload.data_hex.strip())
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Dữ liệu 'data_hex' không hợp lệ: {str(e)}",
+            )
     elif payload.data_base64 is not None:
         try:
             raw_data = base64.b64decode(payload.data_base64)
@@ -371,10 +391,20 @@ async def sign_data(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Dữ liệu 'data_base64' không hợp lệ: {str(e)}",
             )
+    elif payload.data is not None:
+        clean_data = payload.data.strip()
+        # Tự động nhận diện thông minh: nếu is_prehashed và là chuỗi hex 64 ký tự (SHA-256)
+        if payload.is_prehashed and len(clean_data) == 64:
+            try:
+                raw_data = bytes.fromhex(clean_data)
+            except ValueError:
+                raw_data = payload.data.encode("utf-8")
+        else:
+            raw_data = payload.data.encode("utf-8")
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Bắt buộc phải cung cấp 'data' hoặc 'data_base64'.",
+            detail="Bắt buộc phải cung cấp 'data', 'data_base64' hoặc 'data_hex'.",
         )
 
     hsm = HSMService.get_instance()
@@ -408,8 +438,14 @@ async def verify_signature(
     - Đối chiếu văn bản gốc và chữ ký số được cấp bởi Token.
     - Đảm bảo dữ liệu không bị sửa đổi bởi bên thứ ba (Chống chối bỏ).
     """
-    if payload.data is not None:
-        raw_data = payload.data.encode("utf-8")
+    if payload.data_hex is not None:
+        try:
+            raw_data = bytes.fromhex(payload.data_hex.strip())
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Dữ liệu 'data_hex' không hợp lệ: {str(e)}",
+            )
     elif payload.data_base64 is not None:
         try:
             raw_data = base64.b64decode(payload.data_base64)
@@ -418,10 +454,19 @@ async def verify_signature(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Dữ liệu 'data_base64' không hợp lệ: {str(e)}",
             )
+    elif payload.data is not None:
+        clean_data = payload.data.strip()
+        if payload.is_prehashed and len(clean_data) == 64:
+            try:
+                raw_data = bytes.fromhex(clean_data)
+            except ValueError:
+                raw_data = payload.data.encode("utf-8")
+        else:
+            raw_data = payload.data.encode("utf-8")
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Bắt buộc phải cung cấp 'data' hoặc 'data_base64'.",
+            detail="Bắt buộc phải cung cấp 'data', 'data_base64' hoặc 'data_hex'.",
         )
 
     try:
@@ -447,3 +492,30 @@ async def verify_signature(
         key_label=payload.key_label,
         message=msg,
     )
+
+
+# ---------------------------------------------------------------------------
+# 5. Cloud Backup & Disaster Recovery (Bảo toàn Token trên Cloud Storage)
+# ---------------------------------------------------------------------------
+@app.post(
+    "/api/v1/hsm/backup",
+    response_model=BackupResponse,
+    summary="Kích hoạt sao lưu Token tức thời lên Cloud Storage",
+    tags=["Cloud Backup & Disaster Recovery"],
+)
+async def trigger_backup(_: Annotated[str, Depends(verify_api_key)]):
+    """Sao lưu toàn bộ Token (/var/lib/softhsm/tokens) lên Supabase Storage."""
+    success, message = backup_tokens_to_supabase()
+    return BackupResponse(success=success, message=message)
+
+
+@app.post(
+    "/api/v1/hsm/restore",
+    response_model=BackupResponse,
+    summary="Kích hoạt phục hồi Token từ Cloud Storage",
+    tags=["Cloud Backup & Disaster Recovery"],
+)
+async def trigger_restore(_: Annotated[str, Depends(verify_api_key)]):
+    """Phục hồi dữ liệu Token từ Supabase Storage vào container."""
+    success, message = restore_tokens_from_supabase()
+    return BackupResponse(success=success, message=message)
