@@ -1,0 +1,30 @@
+name: Keep Render Service Alive
+
+# Chạy định kỳ mỗi 10 phút để ngăn Render Free Web Service rơi vào trạng thái ngủ (Sleep mode)
+on:
+  schedule:
+    # Chạy mỗi 10 phút (Render sẽ ngủ sau 15 phút không có request)
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Cho phép kích hoạt chạy thủ công từ GitHub Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render Healthcheck Endpoint
+        run: |
+          RENDER_URL="${{ secrets.RENDER_SERVICE_URL }}"
+          if [ -z "$RENDER_URL" ]; then
+            echo "⚠️ Chưa cấu hình secret RENDER_SERVICE_URL. Đang dùng URL mặc định (hãy thay thế trong GitHub Secrets)."
+            exit 0
+          fi
+          
+          echo "🌐 Đang gửi yêu cầu ping tới: $RENDER_URL/health"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$RENDER_URL/health" || echo "failed")
+          
+          echo "Status Code nhận được: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "✅ Server SoftHSMv2 đang hoạt động bình thường!"
+          else
+            echo "⚠️ Cảnh báo: Server trả về mã lỗi hoặc đang khởi động ($HTTP_STATUS)."
+          fi

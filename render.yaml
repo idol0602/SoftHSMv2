@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: universal-crypto-softhsm
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: API_KEY
+        generateValue: true # Render sẽ tự động sinh ngẫu nhiên khóa bảo mật nếu chưa có
+      - key: HSM_TOKEN_LABEL
+        value: DefaultCryptoToken
+      - key: HSM_PIN
+        value: "1234"
+      - key: HSM_SO_PIN
+        value: "12345678"
+      - key: LOG_LEVEL
+        value: INFO

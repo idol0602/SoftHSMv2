@@ -1,0 +1,6 @@
+fastapi>=0.110.0,<0.116.0
+uvicorn[standard]>=0.28.0,<0.33.0
+pydantic>=2.6.0,<2.11.0
+pydantic-settings>=2.2.0,<2.8.0
+PyKCS11>=1.5.16
+cryptography>=42.0.0,<45.0.0

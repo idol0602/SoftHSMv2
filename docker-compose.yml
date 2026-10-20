@@ -1,0 +1,25 @@
+services:
+  softhsm-crypto-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: universal-softhsm-api
+    ports:
+      - "8080:8080"
+    environment:
+      - API_KEY=crypto-hsm-super-secret-key-change-me
+      # Hỗ trợ phân quyền nhiều API key cho nhiều dự án: "key_proj_a,key_proj_b"
+      - API_KEYS=
+      - HSM_TOKEN_LABEL=DefaultCryptoToken
+      - HSM_PIN=1234
+      - HSM_SO_PIN=12345678
+      - PORT=8080
+      - LOG_LEVEL=INFO
+    volumes:
+      # Giữ lại khóa và token trên máy host để không bị mất khi restart container
+      - softhsm_tokens:/var/lib/softhsm/tokens
+    restart: unless-stopped
+
+volumes:
+  softhsm_tokens:
+    driver: local
