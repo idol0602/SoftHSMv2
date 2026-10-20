@@ -8,6 +8,7 @@ Dự án cung cấp một microservice độc lập đóng gói phần cứng b�
 ---
 
 ## 📑 Mục lục
+- 📘 **[Tài liệu Hướng dẫn Tích hợp Backend (INTEGRATION_GUIDE.md)](file:///d:/PersonalProject/TrustSim/SoftHSMv2/INTEGRATION_GUIDE.md)** *(Node.js, Python, Golang SDKs & Use Cases)*
 1. [Khả năng tái sử dụng đa dự án (Multi-Tenant & Use Cases)](#1-khả-năng-tái-sử-dụng-đa-dự-án-multi-tenant--use-cases)
 2. [Cấu trúc thư mục dự án](#2-cấu-trúc-thư-mục-dự-án)
 3. [Biến môi trường cấu hình](#3-biến-môi-trường-cấu-hình)
