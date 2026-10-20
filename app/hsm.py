@@ -625,8 +625,8 @@ class HSMService:
                         mechanism = PyKCS11.Mechanism(PyKCS11.CKM_SHA256_RSA_PKCS, None)
                         tbv = data
 
-                    session.verify(pub_obj, list(tbv), list(signature), mechanism)
-                    return True
+                    res = session.verify(pub_obj, list(tbv), list(signature), mecha=mechanism)
+                    return bool(res)
 
                 elif key_type_val == PyKCS11.CKK_ECDSA:
                     if not is_prehashed:
@@ -637,8 +637,8 @@ class HSMService:
                             raise HSMServiceException("Dữ liệu băm cho ECDSA phải có độ dài 32 bytes.")
 
                     mechanism = PyKCS11.Mechanism(PyKCS11.CKM_ECDSA, None)
-                    session.verify(pub_obj, list(digest), list(signature), mechanism)
-                    return True
+                    res = session.verify(pub_obj, list(digest), list(signature), mecha=mechanism)
+                    return bool(res)
 
                 else:
                     raise HSMServiceException(f"Thuật toán khóa ID {key_type_val} không hỗ trợ xác thực.")
